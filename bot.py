@@ -365,7 +365,7 @@ async def run_check(app, chat_id, manual=False):
     elif manual:
         await app.bot.send_message(chat_id, "Нічога новага.")
     if errors:
-        log.warning("chat %s errors: %s", chat_id, errors)
+        log.warning("source errors: %s", errors)
         if manual:
             await app.bot.send_message(chat_id, "⚠️ Праблемы:\n" + "\n".join(errors[:5]))
 

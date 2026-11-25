@@ -2,7 +2,7 @@ name: jobbot
 
 on:
   schedule:
-    - cron: "17 * * * *"   # раз на гадзіну, на 17-й хвіліне
+    - cron: "*/15 * * * *"   # кожныя 15 хв чытае каманды; вакансіі шукае раз на інтэрвал з налад (па змаўчанні гадзіна)
   workflow_dispatch: {}
 
 concurrency:
@@ -10,7 +10,7 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: write
+  contents: write            # толькі для рэдкага keepalive-каміта
 
 jobs:
   run:
@@ -31,29 +31,36 @@ jobs:
 
       - run: pip install -r requirements.txt
 
+      # State (settings, already-sent jobs, Telegram offset) lives in the Actions cache,
+      # not in the repo, so nothing personal is public.
       - name: Restore state
         id: restore
-        run: |
-          if git ls-remote --exit-code --heads origin state >/dev/null 2>&1; then
-            git fetch --depth=1 origin state
-            git show FETCH_HEAD:jobbot.db > "$DB_PATH"
-          else
-            echo "No state branch yet, starting fresh"
-          fi
+        uses: actions/cache/restore@v4
+        with:
+          path: /tmp/jobbot.db
+          key: jobbot-state-${{ github.run_id }}
+          restore-keys: jobbot-state-
 
       - name: Run bot
         run: python run_once.py
 
       - name: Save state
-        if: always() && steps.restore.outcome == 'success'
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: /tmp/jobbot.db
+          key: jobbot-state-${{ github.run_id }}
+
+      # Public repos get scheduled workflows disabled after 60 days without repo activity.
+      - name: Keepalive
         run: |
-          [ -f "$DB_PATH" ] || exit 0
-          d=$(mktemp -d)
-          cp "$DB_PATH" "$d/jobbot.db"
-          cd "$d"
-          git init -q -b state
-          git config user.name "jobbot"
-          git config user.email "jobbot@users.noreply.github.com"
-          git add jobbot.db
-          git commit -q -m "state $(date -u +%FT%TZ)"
-          git push -q --force "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" state
+          last=$(git log -1 --format=%ct)
+          now=$(date +%s)
+          if [ $((now - last)) -gt 2592000 ]; then
+            git config user.name "jobbot"
+            git config user.email "jobbot@users.noreply.github.com"
+            date -u +%F > .keepalive
+            git add .keepalive
+            git commit -q -m "keepalive $(date -u +%F)"
+            git push -q
+          fi
