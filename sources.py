@@ -22,6 +22,10 @@ class Job:
     company: str = ""
     location: str = ""
     source: str = ""
+    salary: str = ""
+    posted: str = ""
+    tags: tuple = ()
+    rating: str = ""
 
 
 def norm(s):
@@ -38,6 +42,16 @@ def _get(url, **kw):
 
 
 # ---------- jobs.cz ----------
+
+_DATE_RE = re.compile(r"^(Aktualizováno|Přidáno|Končí|Dnes|Včera|\d{1,2}\. ?\w+)", re.I)
+
+
+def _clean(t):
+    """Drop zero-width joiners, turn nbsp/thin spaces into normal ones."""
+    t = re.sub("[\u200b\u200c\u200d\u2060\ufeff]", "", t)
+    t = re.sub("[\u00a0\u2009\u202f]", " ", t)
+    return re.sub(r"\s+", " ", t).strip()
+
 
 _LOC_RE = re.compile(r"^[^\W\d_][\w .]{1,30}\s[–-]\s\S")
 
@@ -58,16 +72,29 @@ def parse_jobscz(html):
         node = a
         while node.parent is not None and len(ids_in(node.parent)) <= 1:
             node = node.parent
-        texts = [t for t in node.stripped_strings if t != title]
-        location, company = "", ""
-        for i, t in enumerate(texts):
+        texts = [_clean(t) for t in node.stripped_strings if t != title]
+        texts = [t for t in texts if t and t != title]
+        salary = posted = rating = location = company = ""
+        rest = []
+        for t in texts:
+            if "Kč" in t and any(c.isdigit() for c in t):
+                salary = salary or t
+            elif _DATE_RE.match(t):
+                posted = posted or t
+            elif "hodnocení" in t:
+                rating = rating or t
+            else:
+                rest.append(t)
+        for i, t in enumerate(rest):
             if _LOC_RE.match(t):
                 location = t
-                if i > 0 and not re.search(r"Kč|\d{1,2}\. ?\w+|Přidáno", texts[i - 1]):
-                    company = texts[i - 1]
+                if i > 0:
+                    company = rest[i - 1]
+                rest = rest[:i - 1] if i > 0 else []
                 break
         jobs.append(Job(key=f"jobscz:{jid}", title=title, url=f"https://www.jobs.cz/rpd/{jid}/",
-                        company=company, location=location, source="jobs.cz"))
+                        company=company, location=location, source="jobs.cz",
+                        salary=salary, posted=posted, tags=tuple(rest[:3]), rating=rating))
     return jobs
 
 

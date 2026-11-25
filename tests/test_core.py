@@ -115,3 +115,20 @@ def test_quiet_hours():
 def test_split_list():
     assert split_list(["produkce,", "festival", "koordinátor,", "booking"]) == \
         ["produkce", "festival koordinátor", "booking"]
+
+
+def test_jobscz_card_salary_and_meta():
+    from sources import parse_jobscz
+    from engine import format_digest
+    html = """<div><div><a href="/rpd/111/">EVENT &amp; OPERATIONS MANAGER/KA</a>
+    <span>Aktualizováno dnes</span><span>45 000 ‍–‍ 55 000 Kč</span>
+    <span>Možnost občasné práce z domova</span><span>BB Sport s.r.o.</span>
+    <span>Praha – Nové Město</span></div>
+    <div><a href="/rpd/222/">Event Project Manager</a><span>23. listopadu</span>
+    <span>TV Prima</span><span>Praha – Strašnice</span><span>172 hodnocení na Atmoskopu</span></div></div>"""
+    a, b = parse_jobscz(html)
+    assert a.salary == "45 000 – 55 000 Kč" and a.company == "BB Sport s.r.o."
+    assert a.posted == "Aktualizováno dnes" and a.tags == ("Možnost občasné práce z domova",)
+    assert b.salary == "" and b.company == "TV Prima" and b.rating.startswith("172")
+    out = format_digest([a, b])
+    assert "45 000 – 55 000 Kč" in out and "не ўказана" in out

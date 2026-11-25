@@ -96,6 +96,7 @@ def guard(fn):
 
 
 SUGGESTED = ["hudba", "klub", "divadlo", "galerie", "ticketing", "PR", "social media", "manager umělců"]
+SUGGESTED_EX = ["office manager", "office manažer", "senior", "řidič", "recepční", "účetní"]
 INTERVALS = [(60, "1 гадз"), (180, "3 гадз"), (360, "6 гадз"), (720, "12 гадз"), (1440, "раз на дзень")]
 LIMITS = [(5, "5"), (10, "10"), (15, "15"), (30, "30")]
 QUIETS = [("22-8", "22:00-8:00"), ("0-7", "0:00-7:00"), ("", "выкл")]
@@ -113,10 +114,29 @@ def kw_pool(s):
     return pool
 
 
+def screen_ex(s):
+    on, rows, row = set(s["exclude"]), [], []
+    pool = []
+    for w in DEFAULTS["exclude"] + SUGGESTED_EX + s["exclude"]:
+        if w not in pool and len(("ex:" + w).encode()) <= 64:
+            pool.append(w)
+    for w in pool:
+        row.append(B(("🚫 " if w in on else "▫️ ") + w, "ex:" + w))
+        if len(row) == 2:
+            rows.append(row)
+            row = []
+    if row:
+        rows.append(row)
+    rows.append([B("⬅️ Назад", "m:main")])
+    return ("Вакансіі з гэтымі словамі ў назве ці кампаніі я хаваю. 🚫 = схавана.\n"
+            "Націсні, каб уключыць ці прыбраць. Свае: /exclude слова, іншае"), InlineKeyboardMarkup(rows)
+
+
 def screen_main(s):
     kb = [[B("🔎 Праверыць цяпер", "check")],
           [B("🔤 Словы", "m:kw"), B("⏱ Частата", "m:int")],
-          [B("🔢 Колькі за раз", "m:lim"), B("🌙 Ціхія гадзіны", "m:quiet")],
+          [B("🚫 Выключэнні", "m:ex"), B("🔢 Колькі за раз", "m:lim")],
+          [B("🌙 Ціхія гадзіны", "m:quiet")],
           [B("▶️ Працягнуць" if s["paused"] else "⏸ Паўза", "pause"), B("♻️ Па змаўчанні", "defaults")]]
     return fmt_status(s), InlineKeyboardMarkup(kb)
 
@@ -143,6 +163,8 @@ def screen_choice(title, opts, current, prefix):
 def render(name, s):
     if name == "kw":
         return screen_kw(s)
+    if name == "ex":
+        return screen_ex(s)
     if name == "int":
         return screen_choice("Як часта правяраць?", INTERVALS, s["interval_min"], "int")
     if name == "lim":
@@ -173,6 +195,10 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             kws = list(s["keywords"])
             kws.remove(arg) if arg in kws else kws.append(arg)
             s, screen = store.update(cid, keywords=kws), "kw"
+        elif kind == "ex":
+            exs = list(s["exclude"])
+            exs.remove(arg) if arg in exs else exs.append(arg)
+            s, screen = store.update(cid, exclude=exs), "ex"
         elif kind == "int":
             s, screen = store.update(cid, interval_min=int(arg)), "int"
         elif kind == "lim":

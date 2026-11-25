@@ -64,11 +64,20 @@ def select_new(store, chat_id, jobs, exclude, limit):
 
 
 def format_digest(jobs, remaining=0):
+    e = lambda x: html.escape(x)
     lines = [f"🔎 <b>Новыя вакансіі: {len(jobs)}</b>\n"]
     for j in jobs:
-        meta = " · ".join(x for x in (j.company, j.location, j.source) if x)
-        lines.append(f'• <a href="{html.escape(j.url, quote=True)}">{html.escape(j.title)}</a>\n'
-                     f'  <i>{html.escape(meta)}</i>')
+        row = [f'• <a href="{html.escape(j.url, quote=True)}">{e(j.title)}</a>',
+               f"  💰 <b>{e(j.salary)}</b>" if j.salary else "  💰 <i>не ўказана</i>"]
+        who = " · ".join(x for x in (j.company, j.location) if x)
+        if who:
+            row.append(f"  🏢 {e(who)}")
+        extra = [x for x in (j.posted, *j.tags, j.rating) if x]
+        if extra:
+            row.append(f"  <i>{e(' · '.join(extra))}</i>")
+        if j.source and j.source != "jobs.cz":
+            row.append(f"  <i>{e(j.source)}</i>")
+        lines.append("\n".join(row))
     if remaining:
         lines.append(f"\nЁсць яшчэ {remaining}, прыйдуць у наступным дайджэсце.")
     return "\n".join(lines)

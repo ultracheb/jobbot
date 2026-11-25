@@ -7,8 +7,9 @@ DEFAULTS = {
     "keywords": [            # starter set: music / events / production (Czech)
         "produkce", "asistent produkce", "koordinátor akcí", "event manager",
         "festival", "koncerty", "booking", "hudební", "kulturní", "promotion",
+        "tatér", "tetovací studio", "ateliér", "galerie", "dílna", "lektor workshopů",
     ],
-    "exclude": [],           # drop jobs whose title/company contain any of these
+    "exclude": ["office manager"],           # drop jobs whose title/company contain any of these
     "interval_min": 60,     # how often to check
     "limit": 15,             # max jobs per digest
     "location": "praha",     # jobs.cz slug / Jooble location
