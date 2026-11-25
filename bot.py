@@ -23,6 +23,7 @@ TOKEN = os.environ.get("TELEGRAM_TOKEN", "")
 ALLOWED = {int(x) for x in os.environ.get("ALLOWED_USERS", "").replace(" ", "").split(",") if x}
 TZ = ZoneInfo(os.environ.get("TZ_NAME", "Europe/Prague"))
 store = Store(os.environ.get("DB_PATH", "jobbot.db"))
+SHOW_BUTTONS = os.environ.get("SHOW_BUTTONS", "") == "1"  # inline menu hidden by default
 KNOWN_SOURCES = {"jobscz", "jooble"}
 
 HELP = """<b>Каманды</b>
@@ -40,7 +41,6 @@ HELP = """<b>Каманды</b>
 /pause  /resume  – паўза
 /resetseen  – забыць, што ўжо дасылалася
 /defaults  – вярнуць налады па змаўчанні
-/menu  – меню з кнопкамі
 /status  – бягучыя налады"""
 
 
@@ -138,7 +138,7 @@ def screen_main(s):
           [B("🚫 Выключэнні", "m:ex"), B("🔢 Колькі за раз", "m:lim")],
           [B("🌙 Ціхія гадзіны", "m:quiet")],
           [B("▶️ Працягнуць" if s["paused"] else "⏸ Паўза", "pause"), B("♻️ Па змаўчанні", "defaults")]]
-    return fmt_status(s), InlineKeyboardMarkup(kb)
+    return fmt_status(s), (InlineKeyboardMarkup(kb) if SHOW_BUTTONS else None)
 
 
 def screen_kw(s):
@@ -232,7 +232,7 @@ async def start(update, context):
     await reply(update, "Прывітанне! Усё ўжо наладжана па змаўчанні: шукаю вакансіі ў Празе "
                         "па музыцы, падзеях і прадакшне і дасылаю новыя раз на гадзіну "
                         "(ціхія гадзіны 22-8). Нічога наладжваць не трэба.\n"
-                        "Каб нешта змяніць, карыстайся кнопкамі ніжэй (/menu).")
+                        "Каб нешта змяніць, глядзі каманды: /help.")
     text, kb = screen_main(store.get(update.effective_chat.id))
     await reply(update, text, kb)
 
@@ -427,7 +427,7 @@ async def tick(context: ContextTypes.DEFAULT_TYPE):
 async def post_init(app):
     from telegram import BotCommand
     await app.bot.set_my_commands([
-        BotCommand("menu", "меню з кнопкамі"), BotCommand("check", "праверыць цяпер"), BotCommand("status", "налады"),
+        BotCommand("check", "праверыць цяпер"), BotCommand("status", "налады"),
         BotCommand("keywords", "што шукаць"), BotCommand("interval", "як часта"),
         BotCommand("limit", "колькі за раз"), BotCommand("help", "усе каманды"),
     ])
