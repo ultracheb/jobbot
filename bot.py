@@ -27,6 +27,7 @@ SHOW_BUTTONS = os.environ.get("SHOW_BUTTONS", "") == "1"  # inline menu hidden b
 KNOWN_SOURCES = {"jobscz", "jooble"}
 
 HELP = """<b>Каманды</b>
+/tags  – спіс усіх тэгаў: што шукаю, што можна дадаць, што выключана
 /keywords produkce, koordinátor festivalu, booking  – што шукаць (праз коску)
 /add слова  /remove слова  – дадаць або прыбраць адно слова
 /exclude senior, řidič  – выключыць вакансіі з гэтымі словамі ў назве/кампаніі
@@ -252,9 +253,23 @@ async def keywords(update, context):
     cid = update.effective_chat.id
     words = split_list(context.args)
     if not words:
-        return await reply(update, "Напішы словы праз коску: /keywords produkce, booking")
+        return await tags(update, context)
     store.update(cid, keywords=words)
     await reply(update, f"Словы: {', '.join(words)}")
+
+
+@guard
+async def tags(update, context):
+    s = store.get(update.effective_chat.id)
+    on = s["keywords"]
+    off = [w for w in kw_pool(s) if w not in on]
+    ex = s["exclude"]
+    lines = [f"✅ <b>Шукаю ({len(on)}):</b>\n" + (", ".join(on) or "—")]
+    if off:
+        lines.append("➕ <b>Можна дадаць</b> (/add слова):\n" + ", ".join(off))
+    lines.append(f"🚫 <b>Выключаныя ({len(ex)}):</b>\n" + (", ".join(ex) or "—"))
+    lines.append("Прыбраць: /remove слова. Выключэнні: /exclude слова, іншае")
+    await reply(update, "\n\n".join(lines))
 
 
 @guard
@@ -428,7 +443,7 @@ async def post_init(app):
     from telegram import BotCommand
     await app.bot.set_my_commands([
         BotCommand("check", "праверыць цяпер"), BotCommand("status", "налады"),
-        BotCommand("keywords", "што шукаць"), BotCommand("interval", "як часта"),
+        BotCommand("tags", "усе тэгі"), BotCommand("keywords", "што шукаць"), BotCommand("interval", "як часта"),
         BotCommand("limit", "колькі за раз"), BotCommand("help", "усе каманды"),
     ])
 
@@ -436,7 +451,7 @@ async def post_init(app):
 def build_app():
     app = Application.builder().token(TOKEN).post_init(post_init).build()
     handlers = {
-        "start": start, "menu": menu, "help": help_cmd, "status": status, "keywords": keywords,
+        "start": start, "menu": menu, "help": help_cmd, "status": status, "keywords": keywords, "tags": tags,
         "add": add_kw, "remove": remove_kw, "exclude": exclude, "location": location,
         "sources": sources_cmd, "quiet": quiet, "pause": pause, "resume": resume,
         "resetseen": reset_seen, "defaults": defaults_cmd, "check": check,
