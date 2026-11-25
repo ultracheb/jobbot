@@ -1,0 +1,30 @@
+# JobBot: Telegram-бот для пошуку вакансій
+
+## Запуск (Windows: проста двойчы клікні start.bat)
+1. У Telegram напішы @BotFather, `/newbot`, скапіруй токен.
+2. `cp .env.example .env` і ўстаў токен (`TELEGRAM_TOKEN=`). Свой ID з @userinfobot можна ўпісаць у `ALLOWED_USERS`, каб бот адказваў толькі вам.
+3. `pip install -r requirements.txt`
+4. `python bot.py`
+
+Бот працуе, пакуль запушчаны працэс. Каб ён быў 24/7, патрэбны кампутар, які не спіць, Raspberry Pi або танны VPS (`systemd`/`docker`).
+
+## Налады ў чаце
+Дасылай `/help`. Асноўнае: `/keywords`, `/exclude`, `/interval`, `/limit`, `/location`, `/sources`, `/quiet`, `/check`, `/pause`.
+
+## Крыніцы
+- **jobs.cz**: парсіць HTML па спасылках `/rpd/<id>/`. Калі сайт зменіць верстку, трэба падправіць `parse_jobscz` у `sources.py`.
+- **Jooble**: афіцыйны API, патрэбен бясплатны ключ (`JOOBLE_KEY`).
+- **RSS** (`/addfeed`) і **старонкі «kariéra»** (`/watch`): першы раз бот запамінае ўсе спасылкі, потым піша толькі пра новыя.
+
+## Тэсты
+`python -m pytest`
+
+## Запуск на GitHub Actions (без уключанага кампутара)
+Бот не слухае Telegram увесь час. Раз на гадзіну GitHub будзіць яго, ён апрацоўвае назбіраныя каманды, правярае вакансіі і шле дайджэст. Адказы на каманды прыходзяць з затрымкай да гадзіны.
+
+1. Стварыце **прыватны** рэпазітар і закіньце туды ўсё з гэтай тэчкі (разам з `.github`).
+2. Settings → Secrets and variables → Actions → New repository secret: `TELEGRAM_TOKEN` (абавязкова), `ALLOWED_USERS` (твой Telegram ID), `JOOBLE_KEY` (па жаданні).
+3. Actions → jobbot → Run workflow, каб запусціць першы раз. Далей ідзе па раскладзе.
+4. Не запускай лакальна `bot.py` з тым самым токенам: Telegram не дазваляе двум працэсам слухаць аднаго бота.
+
+Стан (налады і што ўжо дасылалася) захоўваецца ў гілцы `state` гэтага ж рэпа. Прыватны рэпа на бясплатным тарыфе дае 2000 хвілін у месяц, раз на гадзіну гэта ~750. Інтэрвал змяняецца ў `cron` у `.github/workflows/jobbot.yml`. `/interval` у чаце не можа быць радзей за гэты расклад.

@@ -1,0 +1,59 @@
+name: jobbot
+
+on:
+  schedule:
+    - cron: "17 * * * *"   # раз на гадзіну, на 17-й хвіліне
+  workflow_dispatch: {}
+
+concurrency:
+  group: jobbot
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      DB_PATH: ${{ runner.temp }}/jobbot.db
+      TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+      ALLOWED_USERS: ${{ secrets.ALLOWED_USERS }}
+      JOOBLE_KEY: ${{ secrets.JOOBLE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Restore state
+        id: restore
+        run: |
+          if git ls-remote --exit-code --heads origin state >/dev/null 2>&1; then
+            git fetch --depth=1 origin state
+            git show FETCH_HEAD:jobbot.db > "$DB_PATH"
+          else
+            echo "No state branch yet, starting fresh"
+          fi
+
+      - name: Run bot
+        run: python run_once.py
+
+      - name: Save state
+        if: always() && steps.restore.outcome == 'success'
+        run: |
+          [ -f "$DB_PATH" ] || exit 0
+          d=$(mktemp -d)
+          cp "$DB_PATH" "$d/jobbot.db"
+          cd "$d"
+          git init -q -b state
+          git config user.name "jobbot"
+          git config user.email "jobbot@users.noreply.github.com"
+          git add jobbot.db
+          git commit -q -m "state $(date -u +%FT%TZ)"
+          git push -q --force "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" state
