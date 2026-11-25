@@ -7,12 +7,13 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from dotenv import load_dotenv
-from telegram import Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.error import BadRequest
 from telegram.constants import ParseMode
-from telegram.ext import Application, CommandHandler, ContextTypes
+from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes
 
 import engine
-from storage import Store
+from storage import DEFAULTS, Store
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -39,6 +40,7 @@ HELP = """<b>Каманды</b>
 /pause  /resume  – паўза
 /resetseen  – забыць, што ўжо дасылалася
 /defaults  – вярнуць налады па змаўчанні
+/menu  – меню з кнопкамі
 /status  – бягучыя налады"""
 
 
@@ -79,8 +81,9 @@ def fmt_status(s):
     )
 
 
-async def reply(update, text):
-    await update.message.reply_text(text, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+async def reply(update, text, markup=None):
+    await update.message.reply_text(text, parse_mode=ParseMode.HTML,
+                                    disable_web_page_preview=True, reply_markup=markup)
 
 
 def guard(fn):
@@ -92,12 +95,120 @@ def guard(fn):
     return wrapper
 
 
+SUGGESTED = ["hudba", "klub", "divadlo", "galerie", "ticketing", "PR", "social media", "manager umělců"]
+INTERVALS = [(60, "1 гадз"), (180, "3 гадз"), (360, "6 гадз"), (720, "12 гадз"), (1440, "раз на дзень")]
+LIMITS = [(5, "5"), (10, "10"), (15, "15"), (30, "30")]
+QUIETS = [("22-8", "22:00-8:00"), ("0-7", "0:00-7:00"), ("", "выкл")]
+
+
+def B(text, data):
+    return InlineKeyboardButton(text, callback_data=data)
+
+
+def kw_pool(s):
+    pool = []
+    for w in DEFAULTS["keywords"] + SUGGESTED + s["keywords"]:
+        if w not in pool and len(("kw:" + w).encode()) <= 64:
+            pool.append(w)
+    return pool
+
+
+def screen_main(s):
+    kb = [[B("🔎 Праверыць цяпер", "check")],
+          [B("🔤 Словы", "m:kw"), B("⏱ Частата", "m:int")],
+          [B("🔢 Колькі за раз", "m:lim"), B("🌙 Ціхія гадзіны", "m:quiet")],
+          [B("▶️ Працягнуць" if s["paused"] else "⏸ Паўза", "pause"), B("♻️ Па змаўчанні", "defaults")]]
+    return fmt_status(s), InlineKeyboardMarkup(kb)
+
+
+def screen_kw(s):
+    on, rows, row = set(s["keywords"]), [], []
+    for w in kw_pool(s):
+        row.append(B(("✅ " if w in on else "▫️ ") + w, "kw:" + w))
+        if len(row) == 2:
+            rows.append(row)
+            row = []
+    if row:
+        rows.append(row)
+    rows.append([B("⬅️ Назад", "m:main")])
+    return "Націсні на слова, каб уключыць ці выключыць.\nСвае словы: /add слова", InlineKeyboardMarkup(rows)
+
+
+def screen_choice(title, opts, current, prefix):
+    btns = [B(("✅ " if v == current else "") + label, f"{prefix}:{v}") for v, label in opts]
+    rows = [btns[i:i + 3] for i in range(0, len(btns), 3)] + [[B("⬅️ Назад", "m:main")]]
+    return title, InlineKeyboardMarkup(rows)
+
+
+def render(name, s):
+    if name == "kw":
+        return screen_kw(s)
+    if name == "int":
+        return screen_choice("Як часта правяраць?", INTERVALS, s["interval_min"], "int")
+    if name == "lim":
+        return screen_choice("Колькі вакансій максімум за раз?", LIMITS, s["limit"], "lim")
+    if name == "quiet":
+        return screen_choice("Ціхія гадзіны (па Празе), калі бот не піша:", QUIETS, s["quiet"], "q")
+    return screen_main(s)
+
+
+async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    if ALLOWED and q.from_user.id not in ALLOWED:
+        return
+    try:
+        await q.answer()
+    except Exception:  # in batch mode the tap can be too old to answer
+        pass
+    cid = q.message.chat_id
+    data = q.data or ""
+    kind, _, arg = data.partition(":")
+    s = store.get(cid)
+    screen = "main"
+    try:
+        if data == "check":
+            await run_check(context.application, cid, manual=True)
+            return
+        elif kind == "kw":
+            kws = list(s["keywords"])
+            kws.remove(arg) if arg in kws else kws.append(arg)
+            s, screen = store.update(cid, keywords=kws), "kw"
+        elif kind == "int":
+            s, screen = store.update(cid, interval_min=int(arg)), "int"
+        elif kind == "lim":
+            s, screen = store.update(cid, limit=int(arg)), "lim"
+        elif kind == "q":
+            s, screen = store.update(cid, quiet=arg), "quiet"
+        elif data == "pause":
+            s = store.update(cid, paused=not s["paused"])
+        elif data == "defaults":
+            store.save(cid, {k: (list(v) if isinstance(v, list) else v) for k, v in DEFAULTS.items()})
+            s = store.get(cid)
+        elif kind == "m":
+            screen = arg
+    except ValueError:
+        return
+    text, kb = render(screen, s)
+    try:
+        await q.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
+    except BadRequest:  # "message is not modified"
+        pass
+
+
+@guard
+async def menu(update, context):
+    text, kb = screen_main(store.get(update.effective_chat.id))
+    await reply(update, text, kb)
+
+
 @guard
 async def start(update, context):
     await reply(update, "Прывітанне! Усё ўжо наладжана па змаўчанні: шукаю вакансіі ў Празе "
                         "па музыцы, падзеях і прадакшне і дасылаю новыя раз на гадзіну "
                         "(ціхія гадзіны 22-8). Нічога наладжваць не трэба.\n"
-                        "Хочаш змяніць? Глядзі /status і каманды ніжэй.\n\n" + HELP)
+                        "Каб нешта змяніць, карыстайся кнопкамі ніжэй (/menu).")
+    text, kb = screen_main(store.get(update.effective_chat.id))
+    await reply(update, text, kb)
 
 
 @guard
@@ -290,7 +401,7 @@ async def tick(context: ContextTypes.DEFAULT_TYPE):
 async def post_init(app):
     from telegram import BotCommand
     await app.bot.set_my_commands([
-        BotCommand("check", "праверыць цяпер"), BotCommand("status", "налады"),
+        BotCommand("menu", "меню з кнопкамі"), BotCommand("check", "праверыць цяпер"), BotCommand("status", "налады"),
         BotCommand("keywords", "што шукаць"), BotCommand("interval", "як часта"),
         BotCommand("limit", "колькі за раз"), BotCommand("help", "усе каманды"),
     ])
@@ -299,7 +410,7 @@ async def post_init(app):
 def build_app():
     app = Application.builder().token(TOKEN).post_init(post_init).build()
     handlers = {
-        "start": start, "help": help_cmd, "status": status, "keywords": keywords,
+        "start": start, "menu": menu, "help": help_cmd, "status": status, "keywords": keywords,
         "add": add_kw, "remove": remove_kw, "exclude": exclude, "location": location,
         "sources": sources_cmd, "quiet": quiet, "pause": pause, "resume": resume,
         "resetseen": reset_seen, "defaults": defaults_cmd, "check": check,
@@ -310,6 +421,7 @@ def build_app():
     }
     for name, fn in handlers.items():
         app.add_handler(CommandHandler(name, fn))
+    app.add_handler(CallbackQueryHandler(on_button))
     return app
 
 

@@ -11,10 +11,14 @@ async def run(app=None):
     app = app or bot.build_app()
     await app.initialize()
     try:
+        me = await app.bot.get_me()
+        await bot.post_init(app)
         offset = int(bot.store.get_meta("offset", "0"))
         updates = await app.bot.get_updates(
-            offset=offset or None, timeout=0, allowed_updates=["message"]
+            offset=offset or None, timeout=0, allowed_updates=["message", "callback_query"]
         )
+        log.info("bot=@%s offset=%s pending_updates=%d chats=%d",
+                 me.username, offset, len(updates), len(bot.store.all_chats()))
         for u in updates:
             try:
                 await app.process_update(u)

@@ -24,12 +24,15 @@ def test_run_once_processes_commands_and_digest(tmp_path, monkeypatch):
     monkeypatch.setattr(bot, "store", store)
     monkeypatch.setattr(bot, "TOKEN", "123:abc")
     monkeypatch.setattr(bot, "ALLOWED", set())
+    monkeypatch.setattr(bot, "in_quiet", lambda q, now=None: False)   # keep the test time-independent
     sent, calls = [], {"get_updates": []}
 
     from telegram import User
     async def noop(self, *a, **k): return None
     async def fake_init(self, *a, **k):
         self._bot_user = User(id=1, first_name="jobbot", is_bot=True, username="jobbot")
+    async def fake_me(self, *a, **k):
+        return User(id=1, first_name="jobbot", is_bot=True, username="jobbot")
     async def fake_send(self, chat_id, text, **k): sent.append((chat_id, text))
     pending = [make_update(10, "/keywords produkce, booking"), make_update(11, "/limit 2")]
 
@@ -39,6 +42,8 @@ def test_run_once_processes_commands_and_digest(tmp_path, monkeypatch):
 
     monkeypatch.setattr(ExtBot, "initialize", fake_init)
     monkeypatch.setattr(ExtBot, "shutdown", noop)
+    monkeypatch.setattr(ExtBot, "get_me", fake_me)
+    monkeypatch.setattr(ExtBot, "set_my_commands", noop)
     monkeypatch.setattr(ExtBot, "send_message", fake_send)
     monkeypatch.setattr(ExtBot, "get_updates", fake_get_updates)
     monkeypatch.setattr(sources, "jobscz_search",
@@ -85,12 +90,16 @@ def test_start_alone_works_with_defaults(tmp_path, monkeypatch):
     async def noop(self, *a, **k): return None
     async def fake_init(self, *a, **k):
         self._bot_user = User(id=1, first_name="jobbot", is_bot=True, username="jobbot")
+    async def fake_me(self, *a, **k):
+        return User(id=1, first_name="jobbot", is_bot=True, username="jobbot")
     async def fake_send(self, chat_id, text, **k): sent.append(text)
     async def fake_get_updates(self, offset=None, **k):
         return [Update.de_json(make_update(1, "/start"), self)]
 
     monkeypatch.setattr(ExtBot, "initialize", fake_init)
     monkeypatch.setattr(ExtBot, "shutdown", noop)
+    monkeypatch.setattr(ExtBot, "get_me", fake_me)
+    monkeypatch.setattr(ExtBot, "set_my_commands", noop)
     monkeypatch.setattr(ExtBot, "send_message", fake_send)
     monkeypatch.setattr(ExtBot, "get_updates", fake_get_updates)
     monkeypatch.setattr(sources, "jobscz_search",
@@ -101,3 +110,52 @@ def test_start_alone_works_with_defaults(tmp_path, monkeypatch):
     assert ("produkce", "praha") in searched and len(searched) >= 5
     assert any("Нічога наладжваць не трэба" in t for t in sent)
     assert any("Новыя вакансіі" in t for t in sent)
+
+
+def make_cb(uid, data, chat=42):
+    return {"update_id": uid, "callback_query": {
+        "id": str(uid), "chat_instance": "x", "data": data,
+        "from": {"id": chat, "is_bot": False, "first_name": "T"},
+        "message": {"message_id": 9, "date": 1700000000,
+                    "chat": {"id": chat, "type": "private"}, "text": "menu"}}}
+
+
+def test_buttons_toggle_and_navigate(tmp_path, monkeypatch):
+    store = Store(str(tmp_path / "t.db"))
+    monkeypatch.setattr(bot, "store", store)
+    monkeypatch.setattr(bot, "TOKEN", "123:abc")
+    monkeypatch.setattr(bot, "ALLOWED", set())
+    monkeypatch.setattr(bot, "in_quiet", lambda q, now=None: True)   # no digests in this test
+    from telegram import User
+    edits = []
+
+    async def noop(self, *a, **k): return None
+    async def fake_init(self, *a, **k):
+        self._bot_user = User(id=1, first_name="jobbot", is_bot=True, username="jobbot")
+    async def fake_me(self, *a, **k):
+        return User(id=1, first_name="jobbot", is_bot=True, username="jobbot")
+    async def fake_edit(self, *a, **k): edits.append(k.get("text") or (a[0] if a else ""))
+    async def fake_get_updates(self, offset=None, **k):
+        data = ["m:kw", "kw:booking", "kw:hudba", "int:360", "lim:5", "q:", "pause", "m:main"]
+        return [Update.de_json(make_cb(100 + i, d), self) for i, d in enumerate(data)]
+
+    for name, fn in [("initialize", fake_init), ("shutdown", noop), ("get_me", fake_me),
+                     ("set_my_commands", noop), ("answer_callback_query", noop),
+                     ("edit_message_text", fake_edit), ("get_updates", fake_get_updates)]:
+        monkeypatch.setattr(ExtBot, name, fn)
+
+    asyncio.run(run_once.run())
+
+    s = store.get(42)
+    assert "booking" not in s["keywords"]          # was on by default, toggled off
+    assert "hudba" in s["keywords"]                # suggested, toggled on
+    assert s["interval_min"] == 360 and s["limit"] == 5 and s["quiet"] == "" and s["paused"] is True
+    assert len(edits) == 8
+
+
+def test_keyword_buttons_fit_callback_limit():
+    s = bot.store.get(1) if False else dict(bot.DEFAULTS)
+    for w in bot.kw_pool(s):
+        assert len(("kw:" + w).encode()) <= 64
+    text, kb = bot.screen_kw(s)
+    assert any("✅" in b.text for row in kb.inline_keyboard for b in row)
