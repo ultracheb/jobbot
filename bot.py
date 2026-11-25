@@ -38,6 +38,7 @@ HELP = """<b>Каманды</b>
 /check  – праверыць цяпер
 /pause  /resume  – паўза
 /resetseen  – забыць, што ўжо дасылалася
+/defaults  – вярнуць налады па змаўчанні
 /status  – бягучыя налады"""
 
 
@@ -93,8 +94,10 @@ def guard(fn):
 
 @guard
 async def start(update, context):
-    await reply(update, "Прывітанне! Я буду шукаць вакансіі і дасылаць новыя.\n"
-                        "Пачні з /keywords, потым /check.\n\n" + HELP)
+    await reply(update, "Прывітанне! Усё ўжо наладжана па змаўчанні: шукаю вакансіі ў Празе "
+                        "па музыцы, падзеях і прадакшне і дасылаю новыя раз на гадзіну "
+                        "(ціхія гадзіны 22-8). Нічога наладжваць не трэба.\n"
+                        "Хочаш змяніць? Глядзі /status і каманды ніжэй.\n\n" + HELP)
 
 
 @guard
@@ -220,6 +223,14 @@ async def resume(update, context):
 
 
 @guard
+async def defaults_cmd(update, context):
+    from storage import DEFAULTS
+    store.save(update.effective_chat.id, {k: (list(v) if isinstance(v, list) else v)
+                                          for k, v in DEFAULTS.items()})
+    await reply(update, "Вярнуў налады па змаўчанні.\n\n" + fmt_status(store.get(update.effective_chat.id)))
+
+
+@guard
 async def reset_seen(update, context):
     store.clear_seen(update.effective_chat.id)
     await reply(update, "Забыў усё, што дасылаў. Наступны дайджэст пакажа ўсё зноў.")
@@ -291,7 +302,7 @@ def build_app():
         "start": start, "help": help_cmd, "status": status, "keywords": keywords,
         "add": add_kw, "remove": remove_kw, "exclude": exclude, "location": location,
         "sources": sources_cmd, "quiet": quiet, "pause": pause, "resume": resume,
-        "resetseen": reset_seen, "check": check,
+        "resetseen": reset_seen, "defaults": defaults_cmd, "check": check,
         "interval": int_cmd("interval", 15, 1440, "interval_min"),
         "limit": int_cmd("limit", 1, 30, "limit"),
         "addfeed": list_cmd("feeds", True), "delfeed": list_cmd("feeds", False),

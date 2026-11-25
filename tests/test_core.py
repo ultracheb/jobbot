@@ -52,9 +52,14 @@ def test_limit_and_remaining(tmp_path):
 def test_settings_roundtrip_and_isolation(tmp_path):
     st = Store(str(tmp_path / "t.db"))
     st.update(1, keywords=["a"], interval_min=30)
-    assert st.get(1)["keywords"] == ["a"] and st.get(2)["keywords"] == []
+    assert st.get(1)["keywords"] == ["a"] and st.get(2)["keywords"] == DEFAULTS["keywords"]
     st.get(2)["keywords"].append("zzz")
-    assert DEFAULTS["keywords"] == []
+    assert "zzz" not in DEFAULTS["keywords"]
+    # only non-default values are persisted; resetting to defaults clears them
+    import json
+    st.save(1, dict(DEFAULTS))
+    assert json.loads(st.db.execute("SELECT data FROM settings WHERE chat_id=1").fetchone()[0]) == {}
+    assert len(DEFAULTS["keywords"]) >= 5 and st.get(1)["interval_min"] == 60
 
 
 def test_fetch_all_with_fake_sources(tmp_path, monkeypatch):

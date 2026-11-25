@@ -9,7 +9,7 @@
 Бот працуе, пакуль запушчаны працэс. Каб ён быў 24/7, патрэбны кампутар, які не спіць, Raspberry Pi або танны VPS (`systemd`/`docker`).
 
 ## Налады ў чаце
-Дасылай `/help`. Асноўнае: `/keywords`, `/exclude`, `/interval`, `/limit`, `/location`, `/sources`, `/quiet`, `/check`, `/pause`.
+Усё працуе па змаўчанні адразу пасля `/start` (Прага, музыка/падзеі/прадакшн, раз на гадзіну). Каб змяніць, дасылай `/help`. Асноўнае: `/keywords`, `/exclude`, `/interval`, `/limit`, `/location`, `/sources`, `/quiet`, `/check`, `/pause`.
 
 ## Крыніцы
 - **jobs.cz**: парсіць HTML па спасылках `/rpd/<id>/`. Калі сайт зменіць верстку, трэба падправіць `parse_jobscz` у `sources.py`.

@@ -4,10 +4,13 @@ import sqlite3
 import threading
 
 DEFAULTS = {
-    "keywords": [],          # search words, one search per word
+    "keywords": [            # starter set: music / events / production (Czech)
+        "produkce", "asistent produkce", "koordinátor akcí", "event manager",
+        "festival", "koncerty", "booking", "hudební", "kulturní", "promotion",
+    ],
     "exclude": [],           # drop jobs whose title/company contain any of these
-    "interval_min": 180,     # how often to check
-    "limit": 10,             # max jobs per digest
+    "interval_min": 60,     # how often to check
+    "limit": 15,             # max jobs per digest
     "location": "praha",     # jobs.cz slug / Jooble location
     "sources": ["jobscz"],   # jobscz, jooble
     "feeds": [],             # RSS/Atom urls
@@ -57,11 +60,13 @@ class Store:
         return merged
 
     def save(self, chat_id, settings):
+        # store only what differs from DEFAULTS, so untouched settings follow future defaults
+        diff = {k: v for k, v in settings.items() if k not in DEFAULTS or v != DEFAULTS[k]}
         with self._lock:
             self.db.execute(
                 "INSERT INTO settings (chat_id, data) VALUES (?, ?) "
                 "ON CONFLICT(chat_id) DO UPDATE SET data=excluded.data",
-                (chat_id, json.dumps(settings, ensure_ascii=False)),
+                (chat_id, json.dumps(diff, ensure_ascii=False)),
             )
             self.db.commit()
 

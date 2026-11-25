@@ -71,3 +71,33 @@ def test_due_slack(tmp_path, monkeypatch):
     monkeypatch.setattr(bot, "in_quiet", lambda q, now=None: False)
     asyncio.run(bot.run_due(None))
     assert ran == [1]   # 29 min elapsed is close enough for a 30 min interval
+
+
+def test_start_alone_works_with_defaults(tmp_path, monkeypatch):
+    store = Store(str(tmp_path / "t.db"))
+    monkeypatch.setattr(bot, "store", store)
+    monkeypatch.setattr(bot, "TOKEN", "123:abc")
+    monkeypatch.setattr(bot, "ALLOWED", set())
+    monkeypatch.setattr(bot, "in_quiet", lambda q, now=None: False)
+    from telegram import User
+    sent, searched = [], []
+
+    async def noop(self, *a, **k): return None
+    async def fake_init(self, *a, **k):
+        self._bot_user = User(id=1, first_name="jobbot", is_bot=True, username="jobbot")
+    async def fake_send(self, chat_id, text, **k): sent.append(text)
+    async def fake_get_updates(self, offset=None, **k):
+        return [Update.de_json(make_update(1, "/start"), self)]
+
+    monkeypatch.setattr(ExtBot, "initialize", fake_init)
+    monkeypatch.setattr(ExtBot, "shutdown", noop)
+    monkeypatch.setattr(ExtBot, "send_message", fake_send)
+    monkeypatch.setattr(ExtBot, "get_updates", fake_get_updates)
+    monkeypatch.setattr(sources, "jobscz_search",
+                        lambda kw, loc: searched.append((kw, loc)) or [Job(f"{kw}", f"{kw} job", f"http://x/{kw}")])
+
+    asyncio.run(run_once.run())
+
+    assert ("produkce", "praha") in searched and len(searched) >= 5
+    assert any("Нічога наладжваць не трэба" in t for t in sent)
+    assert any("Новыя вакансіі" in t for t in sent)
