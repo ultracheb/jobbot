@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      DB_PATH: ${{ runner.temp }}/jobbot.db
+      DB_PATH: /tmp/jobbot.db
       TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
       ALLOWED_USERS: ${{ secrets.ALLOWED_USERS }}
       JOOBLE_KEY: ${{ secrets.JOOBLE_KEY }}
