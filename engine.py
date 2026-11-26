@@ -1,5 +1,6 @@
 """Pure logic: gather jobs for one chat, filter, pick what to send."""
 import html
+import re
 
 import sources
 from sources import Job, norm
@@ -10,6 +11,22 @@ def _hits(text, words):
     return any(norm(w) in t for w in words)
 
 
+def _stem(tok):
+    tok = norm(tok)
+    return tok[:-1] if len(tok) > 4 and tok[-1] in "aeiouy" else tok
+
+
+def relevant(job, kw):
+    """jobs.cz/Jooble search full text, so keep only jobs whose title/company really has the keyword."""
+    text = norm(f"{job.title} {job.company}")
+    for tok in re.findall(r"\w+", kw):
+        st = _stem(tok)
+        pat = rf"(?<!\w){re.escape(st)}(?!\w)" if len(st) <= 2 else rf"(?<!\w){re.escape(st)}"
+        if not re.search(pat, text):
+            return False
+    return True
+
+
 def fetch_all(store, chat_id, s):
     """Returns (jobs, errors) for all enabled sources of this chat."""
     jobs, errors = [], []
@@ -18,12 +35,12 @@ def fetch_all(store, chat_id, s):
     for kw in kws:
         if "jobscz" in s["sources"]:
             try:
-                jobs += sources.jobscz_search(kw, s["location"])
+                jobs += [j for j in sources.jobscz_search(kw, s["location"]) if relevant(j, kw)]
             except Exception as e:
                 errors.append(f"jobs.cz «{kw}»: {e}")
         if "jooble" in s["sources"]:
             try:
-                jobs += sources.jooble_search(kw, s["location"] or "Praha")
+                jobs += [j for j in sources.jooble_search(kw, s["location"] or "Praha") if relevant(j, kw)]
             except Exception as e:
                 errors.append(f"Jooble «{kw}»: {e}")
 

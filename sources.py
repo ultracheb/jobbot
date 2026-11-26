@@ -53,6 +53,7 @@ def _clean(t):
     return re.sub(r"\s+", " ", t).strip()
 
 
+_TAG_RE = re.compile(r"^(Odpověď|Odpovězte|Možnost|Práce|Pouze|Hybridní|Home ?office|Bez |Nabízíme)", re.I)
 _LOC_RE = re.compile(r"^[^\W\d_][\w .]{1,30}\s[–-]\s\S")
 
 
@@ -85,16 +86,19 @@ def parse_jobscz(html):
                 rating = rating or t
             else:
                 rest.append(t)
-        for i, t in enumerate(rest):
-            if _LOC_RE.match(t):
-                location = t
-                if i > 0:
-                    company = rest[i - 1]
-                rest = rest[:i - 1] if i > 0 else []
-                break
+        tags = [t for t in rest if _TAG_RE.match(t)]
+        rest = [t for t in rest if t not in tags]
+        li = next((i for i, t in enumerate(rest) if _LOC_RE.match(t) or "lokalit" in t), None)
+        if li is not None:
+            location = rest[li]
+            company = rest[li - 1] if li > 0 else ""
+        elif len(rest) >= 2:
+            company, location = rest[0], rest[-1]
+        elif rest:
+            company = rest[0]
         jobs.append(Job(key=f"jobscz:{jid}", title=title, url=f"https://www.jobs.cz/rpd/{jid}/",
                         company=company, location=location, source="jobs.cz",
-                        salary=salary, posted=posted, tags=tuple(rest[:3]), rating=rating))
+                        salary=salary, posted=posted, tags=tuple(tags[:3]), rating=rating))
     return jobs
 
 

@@ -132,3 +132,24 @@ def test_jobscz_card_salary_and_meta():
     assert b.salary == "" and b.company == "TV Prima" and b.rating.startswith("172")
     out = format_digest([a, b])
     assert "45 000 – 55 000 Kč" in out and "не ўказана" in out
+
+
+def test_relevance_filter():
+    from engine import relevant
+    from sources import Job
+    J = lambda t, c="": Job(key=t, title=t, url="u", company=c)
+    assert relevant(J("Produkční festivalu"), "produkce")
+    assert relevant(J("Event & Operations Manager/ka"), "event manager")
+    assert relevant(J("Tatér/ka do studia"), "tatér")
+    assert not relevant(J("AI produktový manažer"), "produkce")
+    assert not relevant(J("Platform Engineer"), "festival")
+    assert not relevant(J("Project Manager"), "PR")
+    assert relevant(J("PR Specialist"), "PR")
+
+
+def test_card_tags_before_company():
+    from sources import parse_jobscz
+    html = """<div><a href="/rpd/9/">AI produktový manažer</a><span>20. listopadu</span>
+    <span>Odpověď do 2 týdnů</span><span>Seznam.cz, a.s.</span><span>Praha</span></div>"""
+    j = parse_jobscz(html)[0]
+    assert j.company == "Seznam.cz, a.s." and j.location == "Praha" and j.tags == ("Odpověď do 2 týdnů",)
