@@ -1,6 +1,8 @@
 """One-shot mode for GitHub Actions: handle queued commands, run due checks, exit."""
 import asyncio
 import logging
+import os
+import time
 
 import bot
 
@@ -29,7 +31,21 @@ async def run(app=None):
         await app.shutdown()
 
 
+async def loop(minutes, pause=60):
+    """Keep polling for `minutes` (Actions cron is too sparse), then let the workflow re-dispatch itself."""
+    end = time.monotonic() + minutes * 60
+    while True:
+        try:
+            await run()
+        except Exception:
+            log.exception("cycle failed")
+        if time.monotonic() + pause >= end:
+            break
+        await asyncio.sleep(pause)
+
+
 if __name__ == "__main__":
     if not bot.TOKEN:
         raise SystemExit("Няма TELEGRAM_TOKEN")
-    asyncio.run(run())
+    mins = float(os.environ.get("LOOP_MINUTES", "0") or 0)
+    asyncio.run(loop(mins) if mins > 0 else run())

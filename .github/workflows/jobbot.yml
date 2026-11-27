@@ -10,14 +10,16 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: write            # толькі для рэдкага keepalive-каміта
+  contents: write            # для рэдкага keepalive-каміта
+  actions: write             # каб запуск мог сам запусціць наступны
 
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 350
     env:
       DB_PATH: /tmp/jobbot.db
+      LOOP_MINUTES: "330"        # працуе ~5.5 гадзіны, правярае кожную хвіліну, потым запускае сябе нанова
       TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
       ALLOWED_USERS: ${{ secrets.ALLOWED_USERS }}
       JOOBLE_KEY: ${{ secrets.JOOBLE_KEY }}
@@ -50,6 +52,13 @@ jobs:
         with:
           path: /tmp/jobbot.db
           key: jobbot-state-${{ github.run_id }}
+
+      # cron у GitHub спазняецца на гадзіны, таму запуск сам запускае наступны (workflow_dispatch з GITHUB_TOKEN дазволены)
+      - name: Chain next run
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run jobbot.yml --ref "${{ github.ref_name }}" || true
 
       # Public repos get scheduled workflows disabled after 60 days without repo activity.
       - name: Keepalive
