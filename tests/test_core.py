@@ -59,7 +59,7 @@ def test_settings_roundtrip_and_isolation(tmp_path):
     import json
     st.save(1, dict(DEFAULTS))
     assert json.loads(st.db.execute("SELECT data FROM settings WHERE chat_id=1").fetchone()[0]) == {}
-    assert len(DEFAULTS["keywords"]) >= 5 and st.get(1)["interval_min"] == 60
+    assert len(DEFAULTS["keywords"]) >= 5 and st.get(1)["interval_min"] == 180
 
 
 def test_fetch_all_with_fake_sources(tmp_path, monkeypatch):
